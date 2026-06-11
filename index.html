@@ -28,7 +28,7 @@
         <!-- 系統狀態提示區 -->
         <div id="setup-warning" class="hidden bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-2xl shadow-sm">
             <h3 class="font-bold text-amber-800 text-sm">尚未啟用 Google 試算表同步</h3>
-            <p class="text-xs text-amber-700 mt-1">請檢查 GOOGLE_SCRIPT_URL 設定。</p>
+            <p class="text-xs text-amber-700 mt-1">請檢查程式碼中的 GOOGLE_SCRIPT_URL 設定。</p>
         </div>
 
         <!-- 掃描區域 -->
@@ -59,12 +59,17 @@
         const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxIGRl4GqQO4N1um4C72JsAwh0haEBsQqKusQkSlnSx7zEzLkyRraTQeg0RWB6w6TU/exec';
         let html5QrCode = null;
 
-        // 頁面加載時檢查連線狀態
+        // 改良後的初始化檢查，直接驗證網址是否包含 script.google.com
         window.onload = () => {
-            if (!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes('your-url-here')) {
+            const isValidUrl = GOOGLE_SCRIPT_URL.startsWith('https://script.google.com/');
+            if (!isValidUrl) {
                 document.getElementById('setup-warning').classList.remove('hidden');
                 document.getElementById('sync-status-badge').textContent = "未連線";
                 document.getElementById('sync-status-badge').className = "text-[10px] bg-red-500 px-2.5 py-1 rounded-full font-semibold";
+            } else {
+                document.getElementById('setup-warning').classList.add('hidden');
+                document.getElementById('sync-status-badge').textContent = "雲端已連線";
+                document.getElementById('sync-status-badge').className = "text-[10px] bg-emerald-500 px-2.5 py-1 rounded-full font-semibold";
             }
         };
 
