@@ -3,761 +3,122 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>BiblioKeep 智慧書籍管理與掃描系統</title>
-    <!-- Tailwind CSS CDN -->
+    <title>BiblioKeep 智慧書籍管理系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Font Awesome 圖示 CDN -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Html5-Qrcode 條碼掃描核心庫 (使用穩定版) -->
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <style>
-        /* 隱藏預設滾動條但保持滾動功能 */
-        .no-scrollbar::-webkit-scrollbar {
-            display: none;
-        }
-        .no-scrollbar {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
-        /* 掃描線動畫 */
-        @keyframes scan-anim {
-            0% { top: 0%; }
-            50% { top: 100%; }
-            100% { top: 0%; }
-        }
-        .scan-laser {
-            animation: scan-anim 2s infinite ease-in-out;
-        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .scan-laser { animation: scan-anim 2s infinite ease-in-out; }
+        @keyframes scan-anim { 0% { top: 0%; } 50% { top: 100%; } 100% { top: 0%; } }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans antialiased selection:bg-indigo-500 selection:text-white">
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans antialiased">
 
-    <!-- 頂部導航欄 -->
     <header class="bg-indigo-600 text-white shadow-md sticky top-0 z-50">
         <div class="max-w-md mx-auto px-4 py-3 flex justify-between items-center">
             <h1 class="text-xl font-bold flex items-center gap-2">
-                <i class="fa-solid fa-book-bookmark text-amber-300"></i>
-                BiblioKeep
+                <i class="fa-solid fa-book-bookmark text-amber-300"></i> BiblioKeep
             </h1>
-            <div class="flex items-center gap-2">
-                <span id="sync-status-badge" class="text-[10px] bg-red-500/80 px-2.5 py-1 rounded-full border border-red-400 font-semibold animate-pulse">未綁定雲端</span>
-            </div>
+            <span id="sync-status-badge" class="text-[10px] bg-emerald-500 px-2.5 py-1 rounded-full font-semibold">雲端已連線</span>
         </div>
     </header>
 
-    <!-- 主要內容區 (專為 iPhone 手機直式排版優化) -->
     <main class="flex-1 max-w-md w-full mx-auto p-4 flex flex-col gap-5 pb-24">
-        
-        <!-- 雲端未綁定警告提示 (若無設定 URL 則顯示) -->
-        <div id="setup-warning" class="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-2xl shadow-sm transition-all">
-            <div class="flex items-start gap-3">
-                <i class="fa-solid fa-circle-exclamation text-amber-500 mt-0.5 text-lg"></i>
-                <div>
-                    <h3 class="font-bold text-amber-800 text-sm">尚未啟用 Google 試算表同步</h3>
-                    <p class="text-xs text-amber-700 mt-1 leading-relaxed">請搜尋程式碼中的 <code>const GOOGLE_SCRIPT_URL</code> 並填入您的 Google Apps Script 部署 URL。目前系統將預設使用「本機暫存」模式，依然可以進行掃描與查詢！</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- 區塊一：條碼掃描與手動查詢 -->
-        <section class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100/80">
-            <h2 class="text-base font-bold mb-3 flex items-center justify-between text-slate-700">
-                <span class="flex items-center gap-2">
-                    <i class="fa-solid fa-camera text-indigo-500"></i>
-                    智慧相機與條碼掃描
-                </span>
-                <span id="camera-status" class="text-xs text-slate-400 font-normal">鏡頭未開啟</span>
-            </h2>
-            
-            <!-- 掃描相機視窗容器 -->
-            <div class="relative rounded-2xl overflow-hidden bg-slate-950 border border-slate-200 aspect-[4/3] flex items-center justify-center shadow-inner">
-                
-                <!-- HTML5 Qrcode 渲染實際相機畫面 -->
-                <div id="interactive" class="w-full h-full object-cover"></div>
-                
-                <!-- 掃描輔助定位與雷射線 (iOS 下特別需要這個聚焦提示框) -->
-                <div id="scanner-laser" class="absolute inset-0 pointer-events-none flex flex-col justify-center items-center hidden z-20">
+        <!-- 掃描區域 -->
+        <section class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+            <div id="interactive" class="w-full aspect-[4/3] bg-slate-900 rounded-2xl overflow-hidden relative">
+                <div id="scanner-laser" class="absolute inset-0 z-20 hidden flex justify-center items-center pointer-events-none">
                     <div class="w-4/5 h-1/2 border-2 border-emerald-400 rounded-2xl relative overflow-hidden">
-                        <!-- 動態雷射線 -->
                         <div class="w-full h-[2px] bg-emerald-400 shadow-[0_0_8px_#34d399] absolute left-0 scan-laser"></div>
                     </div>
-                    <span class="text-white text-[10px] bg-slate-900/90 backdrop-blur-sm px-3 py-1 rounded-full mt-3 font-medium">請將書本背面 ISBN 條碼對準綠框</span>
-                </div>
-                
-                <!-- 未開啟鏡頭時的優雅提示 -->
-                <div id="scanner-placeholder" class="absolute inset-0 flex flex-col items-center justify-center text-slate-400 p-6 text-center z-10 bg-slate-900/90">
-                    <div class="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center text-slate-300 mb-3 shadow">
-                        <i class="fa-solid fa-barcode text-3xl"></i>
-                    </div>
-                    <p class="text-sm font-semibold text-white">啟動相機掃描書籍條碼</p>
-                    <p class="text-xs text-slate-500 mt-1 max-w-[240px] leading-relaxed">請確認使用 Safari/Chrome 並允許網頁使用相機權限</p>
                 </div>
             </div>
-
-            <!-- 控制按鈕列 -->
-            <div class="flex gap-2 mt-4">
-                <button id="btn-toggle-scan" onclick="toggleScanner()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 px-4 rounded-xl transition duration-200 flex items-center justify-center gap-2 shadow-md shadow-indigo-100">
-                    <i id="scan-btn-icon" class="fa-solid fa-play"></i>
-                    <span id="scan-btn-text">啟動 iPhone 相機</span>
-                </button>
-                <button onclick="openManualModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 rounded-xl transition duration-200 flex items-center justify-center" title="手動輸入 ISBN">
-                    <i class="fa-solid fa-keyboard text-lg"></i>
-                </button>
-            </div>
+            <button id="btn-toggle-scan" onclick="toggleScanner()" class="w-full mt-4 bg-indigo-600 text-white font-bold py-3.5 rounded-xl shadow-md">啟動掃描</button>
         </section>
 
-        <!-- 區塊二：線上比對結果與人工編目表單 -->
-        <section id="book-form-section" class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100/80 hidden">
-            <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
-                <h2 class="text-base font-bold flex items-center gap-2 text-slate-700">
-                    <i class="fa-solid fa-magnifying-glass-chart text-indigo-500"></i>
-                    編輯與確認書籍
-                </h2>
-                <button onclick="clearForm()" class="text-slate-400 hover:text-red-500 text-xs font-semibold flex items-center gap-1 transition">
-                    <i class="fa-solid fa-rotate-left"></i> 放棄取消
-                </button>
-            </div>
-
-            <form id="book-form" onsubmit="saveBookToCloud(event)" class="flex flex-col gap-4">
-                <!-- 封面與核心標題作者 -->
-                <div class="flex gap-4 items-start">
-                    <div class="w-24 h-32 bg-slate-50 rounded-xl border border-slate-200/60 flex flex-col items-center justify-center overflow-hidden flex-shrink-0 shadow-md relative">
-                        <img id="form-cover" src="" alt="書籍封面" class="w-full h-full object-cover hidden" onerror="this.src=''; this.classList.add('hidden'); document.getElementById('form-cover-placeholder').classList.remove('hidden');">
-                        <div id="form-cover-placeholder" class="text-slate-300 flex flex-col items-center text-center p-2">
-                            <i class="fa-regular fa-image text-2xl mb-1 text-slate-400"></i>
-                            <span class="text-[10px] font-medium text-slate-400">暫無封面</span>
-                        </div>
-                    </div>
-                    
-                    <div class="flex-1 flex flex-col gap-3">
-                        <div>
-                            <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">顯示用書名 *</label>
-                            <input type="text" id="input-title" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-slate-800">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">作者 Creator</label>
-                            <input type="text" id="input-author" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-800">
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 次要規格欄位 -->
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">ISBN 碼</label>
-                        <input type="text" id="input-isbn" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-800">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">出版社</label>
-                        <input type="text" id="input-publisher" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-800">
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">出版日期</label>
-                        <input type="text" id="input-publish-date" placeholder="如：2026/06" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-800">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">主題 Subject (分類)</label>
-                        <input type="text" id="input-category" placeholder="如：文學小說" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-800">
-                    </div>
-                </div>
-
-                <!-- 封面網址備份 -->
-                <input type="hidden" id="input-cover-url">
-
-                <div>
-                    <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">個人備註 / 放置位置 (將寫入試算表)</label>
-                    <textarea id="input-notes" rows="2" placeholder="例如：主臥室書櫃、已讀完、AppSheet 錄入..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-800 resize-none"></textarea>
-                </div>
-
-                <!-- 送出儲存按鈕 -->
-                <button type="submit" id="btn-save-book" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-xl transition duration-200 flex items-center justify-center gap-2 shadow-lg shadow-emerald-100">
-                    <i class="fa-solid fa-cloud-arrow-up"></i>
-                    上傳儲存至 Google 試算表
-                </button>
+        <!-- 表單區域 (掃描後自動顯示) -->
+        <section id="book-form-section" class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 hidden">
+            <h2 class="text-base font-bold mb-4">書籍編目確認</h2>
+            <form id="book-form" onsubmit="saveBookToCloud(event)" class="flex flex-col gap-3">
+                <input type="text" id="input-title" placeholder="書名" required class="w-full bg-slate-50 border rounded-xl px-3 py-2 text-sm">
+                <input type="text" id="input-author" placeholder="作者" class="w-full bg-slate-50 border rounded-xl px-3 py-2 text-sm">
+                <input type="text" id="input-isbn" placeholder="ISBN" class="w-full bg-slate-50 border rounded-xl px-3 py-2 text-sm font-mono">
+                <button type="submit" id="btn-save-book" class="w-full bg-emerald-600 text-white font-bold py-3.5 rounded-xl mt-2">儲存至試算表</button>
             </form>
         </section>
-
-        <!-- 區塊三：已建立的書籍搜尋系統 (前端篩選控制) -->
-        <section class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100/80 space-y-4">
-            <h2 class="text-base font-bold flex items-center gap-2 text-slate-700">
-                <i class="fa-solid fa-magnifying-glass text-indigo-500"></i>
-                我的藏書搜尋與篩選
-            </h2>
-
-            <!-- 複合模糊搜尋框與篩選 -->
-            <div class="flex flex-col gap-2.5">
-                <div class="relative">
-                    <span class="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-slate-400">
-                        <i class="fa-solid fa-search"></i>
-                    </span>
-                    <input type="text" id="search-input" oninput="filterBooks()" placeholder="搜尋書名、作者、分類或 ISBN..." class="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm">
-                </div>
-                
-                <!-- 快捷分類篩選 -->
-                <div class="flex gap-2">
-                    <select id="category-filter" onchange="filterBooks()" class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-xs font-semibold text-slate-600 focus:outline-none">
-                        <option value="all">📚 全部主題分類</option>
-                    </select>
-                    <button onclick="exportToCSV()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 rounded-xl text-xs flex items-center gap-1.5 transition">
-                        <i class="fa-solid fa-file-excel"></i> 導出 CSV
-                    </button>
-                </div>
-            </div>
-
-            <!-- 本機現有藏書列表 -->
-            <div class="border-t border-slate-100 pt-3">
-                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">藏書列表清單</h3>
-                <div id="books-list" class="space-y-3 max-h-96 overflow-y-auto no-scrollbar pr-1">
-                    <!-- 搜尋結果卡片會動態生成於此 -->
-                </div>
-                <!-- 空白狀態提示 -->
-                <div id="empty-list-view" class="hidden text-center py-8 text-slate-400">
-                    <i class="fa-solid fa-folder-open text-3xl mb-2 text-slate-300"></i>
-                    <p class="text-xs">查無符合搜尋條件的書籍資料</p>
-                </div>
-            </div>
-        </section>
-
     </main>
 
-    <!-- 手動搜尋條碼彈出視窗 (Modal) -->
-    <div id="modal-manual" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 hidden">
-        <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-xl border border-slate-100">
-            <h3 class="text-lg font-bold text-slate-800 mb-2 flex items-center gap-2">
-                <i class="fa-solid fa-keyboard text-indigo-500"></i>
-                手動輸入 ISBN
-            </h3>
-            <p class="text-xs text-slate-400 leading-relaxed mb-4">請輸入書籍背面條碼處的 10 或 13 位數 ISBN。系統會立刻為您進行網路自動編目比對。</p>
-            
-            <input type="text" id="modal-isbn-input" placeholder="例如: 9789863127390" class="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-base text-center font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 mb-4 text-slate-800">
-            
-            <div class="flex gap-2">
-                <button onclick="closeManualModal()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3.5 rounded-xl transition text-sm">取消</button>
-                <button onclick="submitManualIsbn()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl transition text-sm flex items-center justify-center gap-1">
-                    <i class="fa-solid fa-magnifying-glass"></i> 線上查詢
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 自訂訊息通知彈窗 (Toast UI) -->
-    <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3.5 rounded-2xl shadow-xl flex items-center gap-2 text-sm font-bold transition-all duration-300 transform translate-y-12 opacity-0 pointer-events-none">
-        <i id="toast-icon" class="fa-solid"></i>
-        <span id="toast-message"></span>
-    </div>
-
     <script>
-        // ==========================================================
-        // 🌟【核心設定】：請將您在 Google Apps Script 部署取得的 URL 貼在此處 🌟
-        // ==========================================================
         const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxIGRl4GqQO4N1um4C72JsAwh0haEBsQqKusQkSlnSx7zEzLkyRraTQeg0RWB6w6TU/exec';
-
-        // 系統變數初始化
-        let localBooks = [];
         let html5QrCode = null;
-        let isScanning = false;
-        let activeIsbn = '';
 
-        window.onload = function() {
-            // 讀取本地端緩存 (防止資料在重新整理時遺失)
-            const stored = localStorage.getItem('bibliokeep_cached_books');
-            if (stored) {
-                localBooks = JSON.parse(stored);
-            } else {
-                // 預置初始範例資料
-                localBooks = [
-                    {
-                        isbn: "9789863127390",
-                        title: "精通 Python 程式設計",
-                        author: "Bill Lubanovic",
-                        publisher: "碁峰資訊",
-                        publishDate: "2020/06",
-                        category: "電腦資訊",
-                        coverUrl: "https://images.unsplash.com/photo-1515879218367-8466d910aaa4?auto=format&fit=crop&q=80&w=150",
-                        notes: "我的第一本 Python 學習書"
-                    }
-                ];
-                localStorage.setItem('bibliokeep_cached_books', JSON.stringify(localBooks));
-            }
-
-            // 檢查是否已設定雲端 URL
-            const warning = document.getElementById('setup-warning');
-            const badge = document.getElementById('sync-status-badge');
-            if (GOOGLE_SCRIPT_URL && GOOGLE_SCRIPT_URL !== '請將您的網頁應用程式URL貼在這邊') {
-                warning.classList.add('hidden');
-                badge.className = "text-[10px] bg-emerald-500/90 px-2.5 py-1 rounded-full border border-emerald-400 font-semibold";
-                badge.textContent = "雲端同步已就緒";
-            }
-
-            // 渲染藏書列表
-            renderBooksList();
-        };
-
-        // 1. ==================== iPhone 鏡頭條碼掃描控制 ====================
         async function toggleScanner() {
-            if (isScanning) {
-                await stopScanner();
+            if (html5QrCode && html5QrCode.isScanning) {
+                await html5QrCode.stop();
+                document.getElementById('btn-toggle-scan').textContent = "啟動掃描";
+                document.getElementById('scanner-laser').classList.add('hidden');
             } else {
-                await startScanner();
-            }
-        }
-
-        async function startScanner() {
-            try {
-                // 實例化掃描器
                 html5QrCode = new Html5Qrcode("interactive");
-                
-                document.getElementById('scanner-placeholder').classList.add('hidden');
+                await html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (text) => {
+                    toggleScanner();
+                    fetchBookInfo(text);
+                });
+                document.getElementById('btn-toggle-scan').textContent = "停止掃描";
                 document.getElementById('scanner-laser').classList.remove('hidden');
-                document.getElementById('camera-status').textContent = "相機運作中";
-                document.getElementById('camera-status').className = "text-xs text-emerald-500 font-bold";
-
-                // 核心修復：強制啟用一維條碼解碼規格，使其在 iPhone 上能掃描傳統圖書 EAN-13 / EAN-8 條碼
-                let formats = [];
-                if (typeof Html5QrcodeSupportedFormats !== 'undefined') {
-                    formats = [
-                        Html5QrcodeSupportedFormats.EAN_13,
-                        Html5QrcodeSupportedFormats.EAN_8,
-                        Html5QrcodeSupportedFormats.UPC_A,
-                        Html5QrcodeSupportedFormats.UPC_E,
-                        Html5QrcodeSupportedFormats.CODE_128,
-                        Html5QrcodeSupportedFormats.QR_CODE
-                    ];
-                }
-
-                const config = {
-                    fps: 20, // 提升幀率提高即時運算敏銳度
-                    qrbox: function(width, height) {
-                        // 設計扁平、寬幅的長方形對焦視窗，這對一維條碼來說識別率最好
-                        return {
-                            width: Math.floor(width * 0.9),
-                            height: Math.floor(height * 0.35)
-                        };
-                    },
-                    aspectRatio: 1.333333,
-                    formatsToSupport: formats // 將允許的一維條碼格式寫入相機解碼引擎
-                };
-
-                // 核心修復：使用高級視訊軌道參數 (Advanced Camera Constraints) 
-                // 這會強迫 iPhone 鏡頭使用高解析度並啟用「連續自動對焦」，大幅改善無法識別的問題
-                const mediaConstraints = {
-                    facingMode: "environment", // 使用後鏡頭
-                    width: { min: 640, ideal: 1280, max: 1920 },
-                    height: { min: 480, ideal: 720, max: 1080 },
-                    focusMode: "continuous" // 連續自動對焦
-                };
-
-                // 啟動相機
-                await html5QrCode.start(
-                    mediaConstraints,
-                    config,
-                    onScanSuccess,
-                    onScanError
-                );
-
-                isScanning = true;
-                document.getElementById('scan-btn-icon').className = "fa-solid fa-stop";
-                document.getElementById('scan-btn-text').textContent = "停止 iPhone 相機";
-                document.getElementById('btn-toggle-scan').classList.replace('bg-indigo-600', 'bg-red-500');
-
-            } catch (err) {
-                console.error("相機啟動失敗: ", err);
-                showToast("相機啟動失敗，請確認已核准瀏覽器取用鏡頭權限！", "error");
-                await stopScanner();
             }
         }
 
-        async function stopScanner() {
-            if (html5QrCode && isScanning) {
-                try {
-                    await html5QrCode.stop();
-                } catch (err) {
-                    console.warn("停止掃描時出現警示: ", err);
-                }
-            }
-            isScanning = false;
-            document.getElementById('interactive').innerHTML = ''; // 清空鏡頭
-            document.getElementById('scanner-placeholder').classList.remove('hidden');
-            document.getElementById('scanner-laser').classList.add('hidden');
-            document.getElementById('camera-status').textContent = "鏡頭已關閉";
-            document.getElementById('camera-status').className = "text-xs text-slate-400 font-normal";
-            
-            document.getElementById('scan-btn-icon').className = "fa-solid fa-play";
-            document.getElementById('scan-btn-text').textContent = "啟動 iPhone 相機";
-            document.getElementById('btn-toggle-scan').classList.replace('bg-red-500', 'bg-indigo-600');
-        }
-
-        function onScanSuccess(decodedText, decodedResult) {
-            // 清理條碼字元
-            const cleanCode = decodedText.trim().replace(/[-\s]/g, '');
-            // EAN-13 與 EAN-10 條碼規則檢查
-            if (/^\d{10}$|^\d{13}$/.test(cleanCode)) {
-                // iPhone 震動觸覺反饋
-                if (navigator.vibrate) navigator.vibrate(120);
-                
-                // 停止掃瞄並開啟編目
-                stopScanner();
-                showToast("掃描條碼成功！");
-                fetchBookInfo(cleanCode);
-            }
-        }
-
-        function onScanError(errorMessage) {
-            // 持續捕捉影像流時的無識別回報，此處維持靜默
-        }
-
-        // 2. ==================== 線上比對 API 資料庫 (全面重寫解析與查無對策) ====================
         async function fetchBookInfo(isbn) {
-            showToast("正在線上自動比對編目...", "info");
-            activeIsbn = isbn;
-
-            // 清理可能的前後空白，避免 API 無法對應
-            const cleanIsbn = isbn.trim();
-
+            const cleanIsbn = isbn.replace(/[^0-9X]/g, '');
+            alert("正在查詢書籍資訊，請稍候...");
+            
+            // 先嘗試 Google Books
             try {
-                // 第一防線：Google Books API (支援 CORS，且對繁中圖書支援最廣)
-                const url = `https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanIsbn}`;
-                const response = await fetch(url);
-                const data = await response.json();
-
-                if (data.totalItems > 0 && data.items && data.items[0]) {
+                const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanIsbn}`);
+                const data = await res.json();
+                if (data.totalItems > 0) {
                     const info = data.items[0].volumeInfo;
-                    
-                    // 合理過濾與回填
-                    const parsedBook = {
-                        title: info.title || "",
-                        author: info.authors ? info.authors.join(", ") : "未知作者",
-                        isbn: cleanIsbn,
-                        publisher: info.publisher || "未知出版社",
-                        publishDate: info.publishedDate || "未知出版年",
-                        coverUrl: info.imageLinks ? info.imageLinks.thumbnail.replace('http://', 'https://') : ""
-                    };
-                    populateForm(parsedBook);
-                    showToast("比對完成，已為您自動填寫資料表！", "success");
-                    return;
+                    fillForm({ title: info.title, author: info.authors?.join(', '), isbn: cleanIsbn });
+                } else {
+                    // 轉向您的雲端爬蟲
+                    const scrapeRes = await fetch(`${GOOGLE_SCRIPT_URL}?isbn=${cleanIsbn}`);
+                    const scrapeData = await scrapeRes.json();
+                    if (scrapeData.status === 'success') {
+                        fillForm(scrapeData.data);
+                    } else {
+                        fillForm({ isbn: cleanIsbn });
+                    }
                 }
-                
-                // 第二防線：Open Library API (若 Google 沒有，則降級此處備份)
-                const fallbackUrl = `https://openlibrary.org/api/books?bibkeys=ISBN:${cleanIsbn}&format=json&jscmd=data`;
-                const fbResponse = await fetch(fallbackUrl);
-                const fbData = await fbResponse.json();
-                const key = `ISBN:${cleanIsbn}`;
-
-                if (fbData && fbData[key]) {
-                    const info = fbData[key];
-                    const parsedBook = {
-                        title: info.title || "",
-                        author: info.authors ? info.authors.map(a => a.name).join(", ") : "未知作者",
-                        isbn: cleanIsbn,
-                        publisher: info.publishers ? info.publishers.map(p => p.name).join(", ") : "未知出版社",
-                        publishDate: info.publish_date || "未知出版年",
-                        coverUrl: info.cover ? info.cover.medium : ""
-                    };
-                    populateForm(parsedBook);
-                    showToast("已由備用引擎完成比對！", "success");
-                    return;
-                }
-
-                // 第三防線：若全面找不到，自動引導進入快速人工手動編目
-                populateForm({ isbn: cleanIsbn });
-                showToast("線上比對失敗，已為您開啟人工手動編目！", "warning");
-
-            } catch (err) {
-                console.error("搜尋書籍錯誤: ", err);
-                // 網路異常處理：開啟人工編目，保障運作不中斷
-                populateForm({ isbn: cleanIsbn });
-                showToast("網路異常，已直接進入手動填寫表單！", "warning");
+            } catch (e) {
+                fillForm({ isbn: cleanIsbn });
             }
         }
 
-        // 3. ==================== 人工編目表單控制 ====================
-        function populateForm(book) {
+        function fillForm(book) {
             document.getElementById('input-title').value = book.title || "";
             document.getElementById('input-author').value = book.author || "";
             document.getElementById('input-isbn').value = book.isbn || "";
-            document.getElementById('input-publisher').value = book.publisher || "";
-            document.getElementById('input-publish-date').value = book.publishDate || "";
-            document.getElementById('input-cover-url').value = book.coverUrl || "";
-            document.getElementById('input-notes').value = ""; // 清空備註
-
-            const coverImg = document.getElementById('form-cover');
-            const fallback = document.getElementById('form-cover-placeholder');
-
-            if (book.coverUrl) {
-                coverImg.src = book.coverUrl;
-                coverImg.classList.remove('hidden');
-                fallback.classList.add('hidden');
-            } else {
-                coverImg.src = "";
-                coverImg.classList.add('hidden');
-                fallback.classList.remove('hidden');
-            }
-
-            // 平滑展開表單
-            const formSection = document.getElementById('book-form-section');
-            formSection.classList.remove('hidden');
-            formSection.scrollIntoView({ behavior: 'smooth' });
+            document.getElementById('book-form-section').classList.remove('hidden');
         }
 
-        function clearForm() {
-            document.getElementById('book-form').reset();
-            document.getElementById('form-cover').classList.add('hidden');
-            document.getElementById('form-cover-placeholder').classList.remove('hidden');
-            document.getElementById('book-form-section').classList.add('hidden');
-            activeIsbn = '';
-        }
-
-        // 4. ==================== 儲存並同步至 Google 試算表 ====================
         async function saveBookToCloud(e) {
             e.preventDefault();
-
-            const title = document.getElementById('input-title').value.trim();
-            const author = document.getElementById('input-author').value.trim();
-            const isbn = document.getElementById('input-isbn').value.trim();
-            const publisher = document.getElementById('input-publisher').value.trim();
-            const publishDate = document.getElementById('input-publish-date').value.trim();
-            const coverUrl = document.getElementById('input-cover-url').value.trim();
-            const notes = document.getElementById('input-notes').value.trim();
-
-            if (!title) {
-                showToast("請務必輸入書名欄位！", "error");
-                return;
-            }
-
-            const newBook = {
-                isbn: isbn || "無 ISBN",
-                title: title,
-                author: author || "未知作者",
-                publisher: publisher || "未知出版社",
-                publishDate: publishDate || "未知出版年",
-                category: document.getElementById('input-category').value.trim() || "未分類",
-                coverUrl: coverUrl,
-                notes: notes
+            const data = {
+                isbn: document.getElementById('input-isbn').value,
+                title: document.getElementById('input-title').value,
+                author: document.getElementById('input-author').value
             };
 
-            // 優先儲存在本機緩存中
-            localBooks.unshift(newBook);
-            localStorage.setItem('bibliokeep_cached_books', JSON.stringify(localBooks));
-            renderBooksList();
-
-            // 若有設定 Webhook，隔空發送 POST 給 Google Apps Script 寫入試算表
-            if (GOOGLE_SCRIPT_URL && GOOGLE_SCRIPT_URL !== '請將您的網頁應用程式URL貼在這邊') {
-                showToast("本機儲存成功！正在發送雲端同步...", "info");
-                
-                const saveBtn = document.getElementById('btn-save-book');
-                const originalHtml = saveBtn.innerHTML;
-                saveBtn.disabled = true;
-                saveBtn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> 正在傳送到雲端...`;
-
-                try {
-                    // 使用 no-cors 模式發送，避開網頁端跨網域安全性政策 (CORS) 擋住 Request
-                    await fetch(GOOGLE_SCRIPT_URL, {
-                        method: 'POST',
-                        mode: 'no-cors',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            isbn: newBook.isbn,
-                            title: newBook.title,
-                            author: newBook.author,
-                            publisher: newBook.publisher,
-                            publishDate: newBook.publishDate,
-                            coverUrl: newBook.coverUrl,
-                            category: newBook.category,
-                            notes: newBook.notes
-                        })
-                    });
-
-                    showToast("🎉 已成功儲存並同步至雲端試算表！", "success");
-                    clearForm();
-
-                } catch (error) {
-                    console.error("雲端同步失敗: ", error);
-                    showToast("雲端同步異常，已為您安全儲存在本機！", "warning");
-                } finally {
-                    saveBtn.disabled = false;
-                    saveBtn.innerHTML = originalHtml;
-                }
-            } else {
-                showToast("🎉 已儲存至本機藏書庫！", "success");
-                clearForm();
-            }
-        }
-
-        // 5. ==================== 藏書搜尋、過濾、排版系統 ====================
-        function renderBooksList() {
-            const listContainer = document.getElementById('books-list');
-            const emptyView = document.getElementById('empty-list-view');
-            const searchVal = document.getElementById('search-input').value.trim().toLowerCase();
-            const catFilterVal = document.getElementById('category-filter').value;
-
-            // 建立動態下拉主題篩選選單
-            const catFilter = document.getElementById('category-filter');
-            const previousSelected = catFilter.value;
-            const uniqueCategories = [...new Set(localBooks.map(b => b.category).filter(Boolean))];
-            
-            catFilter.innerHTML = '<option value="all">📚 全部主題分類</option>';
-            uniqueCategories.forEach(cat => {
-                const opt = document.createElement('option');
-                opt.value = cat;
-                opt.textContent = `📂 ${cat}`;
-                catFilter.appendChild(opt);
+            await fetch(GOOGLE_SCRIPT_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
             });
-            catFilter.value = previousSelected;
-
-            // 搜尋與篩選過濾演算法
-            const filtered = localBooks.filter(b => {
-                const matchesSearch = 
-                    b.title.toLowerCase().includes(searchVal) ||
-                    b.author.toLowerCase().includes(searchVal) ||
-                    b.isbn.includes(searchVal) ||
-                    (b.category && b.category.toLowerCase().includes(searchVal));
-                
-                const matchesCategory = (catFilterVal === 'all' || b.category === catFilterVal);
-
-                return matchesSearch && matchesCategory;
-            });
-
-            // 渲染列表
-            listContainer.innerHTML = '';
-            if (filtered.length === 0) {
-                emptyView.classList.remove('hidden');
-                return;
-            }
-            emptyView.classList.add('hidden');
-
-            filtered.forEach((book, idx) => {
-                const card = document.createElement('div');
-                card.className = "bg-slate-50 rounded-xl p-3 border border-slate-200/50 flex items-center justify-between gap-3 shadow-sm";
-                card.innerHTML = `
-                    <div class="flex items-center gap-3 min-w-0">
-                        <div class="w-10 h-14 bg-slate-200 rounded-md overflow-hidden flex-shrink-0 flex items-center justify-center border border-slate-300/40">
-                            ${book.coverUrl 
-                                ? `<img src="${book.coverUrl}" class="w-full h-full object-cover">` 
-                                : `<i class="fa-regular fa-image text-slate-400 text-sm"></i>`
-                            }
-                        </div>
-                        <div class="min-w-0">
-                            <h4 class="font-bold text-slate-800 text-xs truncate" title="${book.title}">${book.title}</h4>
-                            <p class="text-[10px] text-slate-500 truncate">✍️ ${book.author} | 🏢 ${book.publisher}</p>
-                            <p class="text-[9px] font-mono text-slate-400 mt-0.5">ISBN: ${book.isbn}</p>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <span class="text-[9px] font-bold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full border border-indigo-100 whitespace-nowrap">${book.category || '未分類'}</span>
-                        <button onclick="deleteBook(${idx})" class="text-slate-300 hover:text-red-500 p-1.5 transition text-xs">
-                            <i class="fa-solid fa-trash-can"></i>
-                        </button>
-                    </div>
-                `;
-                listContainer.appendChild(card);
-            });
+            alert("已同步至試算表！");
+            document.getElementById('book-form-section').classList.add('hidden');
         }
-
-        function filterBooks() {
-            renderBooksList();
-        }
-
-        function deleteBook(index) {
-            if (confirm("⚠️ 確定要從本機清單刪除這本書的紀錄嗎？")) {
-                localBooks.splice(index, 1);
-                localStorage.setItem('bibliokeep_cached_books', JSON.stringify(localBooks));
-                renderBooksList();
-                showToast("已成功移本書籍紀錄！", "success");
-            }
-        }
-
-        // 導出 CSV (防止手機亂碼)
-        function exportToCSV() {
-            if (localBooks.length === 0) {
-                showToast("目前沒有書籍可以導出！", "warning");
-                return;
-            }
-
-            let csvContent = "\uFEFF"; // BOM 避免 Excel 亂碼
-            csvContent += "ISBN,書名,作者,出版社,出版日期,分類,個人備註\n";
-
-            localBooks.forEach(b => {
-                const row = [
-                    `'${b.isbn}`, // 防止科學記號
-                    `"${b.title.replace(/"/g, '""')}"`,
-                    `"${b.author.replace(/"/g, '""')}"`,
-                    `"${b.publisher.replace(/"/g, '""')}"`,
-                    `"${b.publishDate.replace(/"/g, '""')}"`,
-                    `"${(b.category || '未分類').replace(/"/g, '""')}"`,
-                    `"${(b.notes || '').replace(/"/g, '""')}"`
-                ];
-                csvContent += row.join(",") + "\n";
-            });
-
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            link.setAttribute("href", url);
-            link.setAttribute("download", `BiblioKeep_書櫃匯出.csv`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            showToast("已成功下載 CSV 檔案！", "success");
-        }
-
-        // 6. ==================== 手動對話視窗 (Modal) 控制 ====================
-        function openManualModal() {
-            document.getElementById('modal-manual').classList.remove('hidden');
-            document.getElementById('modal-isbn-input').focus();
-        }
-
-        function closeManualModal() {
-            document.getElementById('modal-manual').classList.add('hidden');
-            document.getElementById('modal-isbn-input').value = '';
-        }
-
-        function submitManualIsbn() {
-            const isbnInput = document.getElementById('modal-isbn-input').value.trim().replace(/[-\s]/g, '');
-            if (/^\d{10}$|^\d{13}$/.test(isbnInput)) {
-                closeManualModal();
-                fetchBookInfo(isbnInput);
-            } else {
-                showToast("請輸入正確的 10 或 13 位數 ISBN 數字！", "error");
-            }
-        }
-
-        // 7. ==================== 自訂訊息通知 UI 控制 ====================
-        function showToast(message, type = 'success') {
-            toastMessage.textContent = message;
-            toast.className = "fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3.5 rounded-2xl shadow-xl flex items-center gap-2 text-sm font-bold transition-all duration-300 transform";
-            
-            if (type === 'success') {
-                toast.classList.add('bg-emerald-600', 'text-white');
-                toastIcon.className = "fa-solid fa-circle-check text-base";
-            } else if (type === 'error') {
-                toast.classList.add('bg-rose-600', 'text-white');
-                toastIcon.className = "fa-solid fa-circle-xmark text-base";
-            } else if (type === 'warning') {
-                toast.classList.add('bg-amber-500', 'text-white');
-                toastIcon.className = "fa-solid fa-circle-exclamation text-base";
-            } else {
-                toast.classList.add('bg-slate-800', 'text-white');
-                toastIcon.className = "fa-solid fa-circle-info text-base";
-            }
-
-            toast.classList.remove('translate-y-12', 'opacity-0');
-            toast.classList.add('translate-y-0', 'opacity-100');
-
-            setTimeout(() => {
-                toast.classList.remove('translate-y-0', 'opacity-100');
-                toast.classList.add('translate-y-12', 'opacity-0');
-            }, 3000);
-        }
-
-        // 安全機制：卸載頁面時務必關閉鏡頭，防止 iPhone background 程序耗電
-        window.addEventListener('beforeunload', async () => {
-            await stopScanner();
-        });
     </script>
 </body>
 </html>
