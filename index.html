@@ -25,6 +25,12 @@
     </header>
 
     <main class="flex-1 max-w-md w-full mx-auto p-4 flex flex-col gap-5 pb-24">
+        <!-- 系統狀態提示區 -->
+        <div id="setup-warning" class="hidden bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-2xl shadow-sm">
+            <h3 class="font-bold text-amber-800 text-sm">尚未啟用 Google 試算表同步</h3>
+            <p class="text-xs text-amber-700 mt-1">請檢查 GOOGLE_SCRIPT_URL 設定。</p>
+        </div>
+
         <!-- 掃描區域 -->
         <section class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
             <div id="interactive" class="w-full aspect-[4/3] bg-slate-900 rounded-2xl overflow-hidden relative">
@@ -37,7 +43,7 @@
             <button id="btn-toggle-scan" onclick="toggleScanner()" class="w-full mt-4 bg-indigo-600 text-white font-bold py-3.5 rounded-xl shadow-md">啟動掃描</button>
         </section>
 
-        <!-- 表單區域 (掃描後自動顯示) -->
+        <!-- 表單區域 -->
         <section id="book-form-section" class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 hidden">
             <h2 class="text-base font-bold mb-4">書籍編目確認</h2>
             <form id="book-form" onsubmit="saveBookToCloud(event)" class="flex flex-col gap-3">
@@ -53,6 +59,15 @@
         const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxIGRl4GqQO4N1um4C72JsAwh0haEBsQqKusQkSlnSx7zEzLkyRraTQeg0RWB6w6TU/exec';
         let html5QrCode = null;
 
+        // 頁面加載時檢查連線狀態
+        window.onload = () => {
+            if (!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes('your-url-here')) {
+                document.getElementById('setup-warning').classList.remove('hidden');
+                document.getElementById('sync-status-badge').textContent = "未連線";
+                document.getElementById('sync-status-badge').className = "text-[10px] bg-red-500 px-2.5 py-1 rounded-full font-semibold";
+            }
+        };
+
         async function toggleScanner() {
             if (html5QrCode && html5QrCode.isScanning) {
                 await html5QrCode.stop();
@@ -60,20 +75,23 @@
                 document.getElementById('scanner-laser').classList.add('hidden');
             } else {
                 html5QrCode = new Html5Qrcode("interactive");
-                await html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (text) => {
-                    toggleScanner();
-                    fetchBookInfo(text);
-                });
-                document.getElementById('btn-toggle-scan').textContent = "停止掃描";
-                document.getElementById('scanner-laser').classList.remove('hidden');
+                try {
+                    await html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (text) => {
+                        toggleScanner();
+                        fetchBookInfo(text);
+                    });
+                    document.getElementById('btn-toggle-scan').textContent = "停止掃描";
+                    document.getElementById('scanner-laser').classList.remove('hidden');
+                } catch (err) {
+                    alert("無法啟動相機，請檢查瀏覽器權限。");
+                }
             }
         }
 
         async function fetchBookInfo(isbn) {
             const cleanIsbn = isbn.replace(/[^0-9X]/g, '');
-            alert("正在查詢書籍資訊，請稍候...");
+            alert("正在查詢書籍資訊...");
             
-            // 先嘗試 Google Books
             try {
                 const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanIsbn}`);
                 const data = await res.json();
@@ -81,7 +99,6 @@
                     const info = data.items[0].volumeInfo;
                     fillForm({ title: info.title, author: info.authors?.join(', '), isbn: cleanIsbn });
                 } else {
-                    // 轉向您的雲端爬蟲
                     const scrapeRes = await fetch(`${GOOGLE_SCRIPT_URL}?isbn=${cleanIsbn}`);
                     const scrapeData = await scrapeRes.json();
                     if (scrapeData.status === 'success') {
@@ -110,14 +127,18 @@
                 author: document.getElementById('input-author').value
             };
 
-            await fetch(GOOGLE_SCRIPT_URL, {
-                method: 'POST',
-                mode: 'no-cors',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
-            alert("已同步至試算表！");
-            document.getElementById('book-form-section').classList.add('hidden');
+            try {
+                await fetch(GOOGLE_SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                alert("已同步至試算表！");
+                document.getElementById('book-form-section').classList.add('hidden');
+            } catch (err) {
+                alert("同步失敗，請檢查網路。");
+            }
         }
     </script>
 </body>
