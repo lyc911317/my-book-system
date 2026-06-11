@@ -307,6 +307,7 @@
 
         async function startScanner() {
             try {
+                // 實例化掃描器
                 html5QrCode = new Html5Qrcode("interactive");
                 
                 document.getElementById('scanner-placeholder').classList.add('hidden');
@@ -314,22 +315,44 @@
                 document.getElementById('camera-status').textContent = "相機運作中";
                 document.getElementById('camera-status').className = "text-xs text-emerald-500 font-bold";
 
+                // 核心修復：強制啟用一維條碼解碼規格，使其在 iPhone 上能掃描傳統圖書 EAN-13 / EAN-8 條碼
+                let formats = [];
+                if (typeof Html5QrcodeSupportedFormats !== 'undefined') {
+                    formats = [
+                        Html5QrcodeSupportedFormats.EAN_13,
+                        Html5QrcodeSupportedFormats.EAN_8,
+                        Html5QrcodeSupportedFormats.UPC_A,
+                        Html5QrcodeSupportedFormats.UPC_E,
+                        Html5QrcodeSupportedFormats.CODE_128,
+                        Html5QrcodeSupportedFormats.QR_CODE
+                    ];
+                }
+
                 const config = {
-                    fps: 15,
+                    fps: 20, // 提升幀率提高即時運算敏銳度
                     qrbox: function(width, height) {
-                        // 條碼通常是扁平的矩形，設定最適化的 iOS 掃瞄對焦框
+                        // 設計扁平、寬幅的長方形對焦視窗，這對一維條碼來說識別率最好
                         return {
-                            width: Math.floor(width * 0.85),
-                            height: Math.floor(height * 0.4)
+                            width: Math.floor(width * 0.9),
+                            height: Math.floor(height * 0.35)
                         };
                     },
-                    // 強迫影片填滿防止在 iPhone 寬螢幕下失真
-                    aspectRatio: 1.333333
+                    aspectRatio: 1.333333,
+                    formatsToSupport: formats // 將允許的一維條碼格式寫入相機解碼引擎
                 };
 
-                // 啟動相機：強制要求後鏡頭，iOS 14+ 完美適配
+                // 核心修復：使用高級視訊軌道參數 (Advanced Camera Constraints) 
+                // 這會強迫 iPhone 鏡頭使用高解析度並啟用「連續自動對焦」，大幅改善無法識別的問題
+                const mediaConstraints = {
+                    facingMode: "environment", // 使用後鏡頭
+                    width: { min: 640, ideal: 1280, max: 1920 },
+                    height: { min: 480, ideal: 720, max: 1080 },
+                    focusMode: "continuous" // 連續自動對焦
+                };
+
+                // 啟動相機
                 await html5QrCode.start(
-                    { facingMode: "environment" },
+                    mediaConstraints,
                     config,
                     onScanSuccess,
                     onScanError
@@ -386,59 +409,67 @@
             // 持續捕捉影像流時的無識別回報，此處維持靜默
         }
 
-        // 2. ==================== 線上比對 API 資料庫 (修復搜尋失敗問題) ====================
+        // 2. ==================== 線上比對 API 資料庫 (全面重寫解析與查無對策) ====================
         async function fetchBookInfo(isbn) {
             showToast("正在線上自動比對編目...", "info");
             activeIsbn = isbn;
 
+            // 清理可能的前後空白，避免 API 無法對應
+            const cleanIsbn = isbn.trim();
+
             try {
-                // 使用 Google Books API 進行交叉查詢
-                const url = `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`;
+                // 第一防線：Google Books API (支援 CORS，且對繁中圖書支援最廣)
+                const url = `https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanIsbn}`;
                 const response = await fetch(url);
                 const data = await response.json();
 
-                if (data.totalItems > 0) {
+                if (data.totalItems > 0 && data.items && data.items[0]) {
                     const info = data.items[0].volumeInfo;
+                    
+                    // 合理過濾與回填
                     const parsedBook = {
                         title: info.title || "",
                         author: info.authors ? info.authors.join(", ") : "未知作者",
-                        isbn: isbn,
+                        isbn: cleanIsbn,
                         publisher: info.publisher || "未知出版社",
                         publishDate: info.publishedDate || "未知出版年",
                         coverUrl: info.imageLinks ? info.imageLinks.thumbnail.replace('http://', 'https://') : ""
                     };
                     populateForm(parsedBook);
                     showToast("比對完成，已為您自動填寫資料表！", "success");
-                } else {
-                    // 降級第二道防線：Open Library API
-                    const fallbackUrl = `https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`;
-                    const fbResponse = await fetch(fallbackUrl);
-                    const fbData = await fbResponse.json();
-                    const key = `ISBN:${isbn}`;
-
-                    if (fbData[key]) {
-                        const info = fbData[key];
-                        const parsedBook = {
-                            title: info.title || "",
-                            author: info.authors ? info.authors.map(a => a.name).join(", ") : "未知作者",
-                            isbn: isbn,
-                            publisher: info.publishers ? info.publishers.map(p => p.name).join(", ") : "未知出版社",
-                            publishDate: info.publish_date || "未知出版年",
-                            coverUrl: info.cover ? info.cover.medium : ""
-                        };
-                        populateForm(parsedBook);
-                        showToast("已由備用引擎完成比對！", "success");
-                    } else {
-                        // 都找不到時，引導進入快速人工手動編目
-                        populateForm({ isbn: isbn });
-                        showToast("線上比對失敗，已為您開啟人工手動編目！", "warning");
-                    }
+                    return;
                 }
+                
+                // 第二防線：Open Library API (若 Google 沒有，則降級此處備份)
+                const fallbackUrl = `https://openlibrary.org/api/books?bibkeys=ISBN:${cleanIsbn}&format=json&jscmd=data`;
+                const fbResponse = await fetch(fallbackUrl);
+                const fbData = await fbResponse.json();
+                const key = `ISBN:${cleanIsbn}`;
+
+                if (fbData && fbData[key]) {
+                    const info = fbData[key];
+                    const parsedBook = {
+                        title: info.title || "",
+                        author: info.authors ? info.authors.map(a => a.name).join(", ") : "未知作者",
+                        isbn: cleanIsbn,
+                        publisher: info.publishers ? info.publishers.map(p => p.name).join(", ") : "未知出版社",
+                        publishDate: info.publish_date || "未知出版年",
+                        coverUrl: info.cover ? info.cover.medium : ""
+                    };
+                    populateForm(parsedBook);
+                    showToast("已由備用引擎完成比對！", "success");
+                    return;
+                }
+
+                // 第三防線：若全面找不到，自動引導進入快速人工手動編目
+                populateForm({ isbn: cleanIsbn });
+                showToast("線上比對失敗，已為您開啟人工手動編目！", "warning");
+
             } catch (err) {
                 console.error("搜尋書籍錯誤: ", err);
-                // 網路異常處理：開啟人工編目
-                populateForm({ isbn: isbn });
-                showToast("網路異常，已為您直接開通人工編目表單！", "warning");
+                // 網路異常處理：開啟人工編目，保障運作不中斷
+                populateForm({ isbn: cleanIsbn });
+                showToast("網路異常，已直接進入手動填寫表單！", "warning");
             }
         }
 
